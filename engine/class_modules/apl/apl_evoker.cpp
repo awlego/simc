@@ -123,8 +123,20 @@ void devastation( player_t* p )
 }
 //devastation_apl_end
 
-void preservation( player_t* /*p*/ )
+void preservation( player_t* p )
 {
+  action_priority_list_t* default_ = p->get_action_priority_list( "default" );
+  action_priority_list_t* precombat = p->get_action_priority_list( "precombat" );
+  action_priority_list_t* st = p->get_action_priority_list( "st" );
+
+
+  precombat->add_action( "flask" );
+  precombat->add_action( "food" );
+
+  default_->add_action( "run_action_list,name=st" );
+
+  st->add_action( "disintegrate" );
+  st->add_action( "living_flame" );
 }
 
 void no_spec( player_t* /*p*/ )
