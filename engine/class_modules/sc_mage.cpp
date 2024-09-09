@@ -102,6 +102,13 @@ enum class meteor_type
   ISOTHERMIC
 };
 
+enum class arcane_phoenix_rotation
+{
+  DEFAULT,
+  ST,
+  AOE
+};
+
 struct icicle_tuple_t
 {
   action_t* action; // Icicle action corresponding to the source action
@@ -247,7 +254,6 @@ public:
   // Events
   struct events_t
   {
-    event_t* burden_of_power;
     event_t* enlightened;
     event_t* flame_accelerant;
     event_t* icicle;
@@ -461,6 +467,7 @@ public:
     timespan_t glacial_spike_delay = 100_ms;
     bool treat_bloodlust_as_time_warp = false;
     unsigned initial_spellfire_spheres = 3;
+    arcane_phoenix_rotation arcane_phoenix_rotation_override = arcane_phoenix_rotation::DEFAULT;
   } options;
 
   // Pets
@@ -1253,6 +1260,8 @@ struct arcane_phoenix_spell_t : public mage_pet_spell_t
 
     base_multiplier *= 1.0 + o()->spec.arcane_mage->effectN( 1 ).percent();
     base_multiplier *= 1.0 + o()->spec.fire_mage->effectN( 1 ).percent();
+    // TODO: Uncomment when this modifier is fixed to be properly applied.
+    // base_dd_multiplier *= 1.0 + o()->spec.arcane_mage->effectN( 9 ).percent();
     crit_bonus_multiplier *= 1.0 + o()->talents.overflowing_energy->effectN( 1 ).percent();
     crit_bonus_multiplier *= 1.0 + o()->talents.wildfire->effectN( 2 ).percent();
   }
@@ -1325,22 +1334,25 @@ struct arcane_phoenix_spell_t : public mage_pet_spell_t
 struct arcane_phoenix_pet_t final : public mage_pet_t
 {
   event_t* cast_event;
-  std::vector<action_t*> base_actions;
+  std::vector<action_t*> st_actions;
+  std::vector<action_t*> aoe_actions;
   std::vector<action_t*> exceptional_actions;
-  std::vector<action_t*> scheduled_actions;
   timespan_t cast_period;
+  int spells_used;
   int exceptional_spells_used;
+  int exceptional_spells_remaining;
   bool exceptional_meteor_used;
 
   arcane_phoenix_pet_t( sim_t* sim, mage_t* owner ) :
     mage_pet_t( sim, owner, "arcane_phoenix", true, true ),
     cast_event(),
-    base_actions(),
+    st_actions(),
+    aoe_actions(),
     exceptional_actions(),
-    scheduled_actions(),
     cast_period( owner->find_spell( 448659 )->effectN( 2 ).period() ),
+    spells_used(),
     exceptional_spells_used(),
-    exceptional_meteor_used()
+    exceptional_spells_remaining()
   {
     can_dismiss = true;
     owner_coeff.sp_from_sp = 1.0;
@@ -1349,20 +1361,39 @@ struct arcane_phoenix_pet_t final : public mage_pet_t
   void schedule_cast()
   {
     cast_event = nullptr;
-    if ( debug_cast<arcane_phoenix_spell_t*>( scheduled_actions.back() )->exceptional )
-    {
-      // TODO: Spellfire Sphere and Lingering Embers are handled several hundred
-      // milliseconds before the spell is actually executed.
-      o()->buffs.spellfire_sphere->decrement();
-      o()->buffs.lingering_embers->trigger();
-      exceptional_spells_used++;
-    }
+    action_t* action;
     const auto& tl = sim->target_non_sleeping_list;
-    player_t* t = tl[ rng().range( tl.size() ) ];
-    scheduled_actions.back()->execute_on_target( t );
-    scheduled_actions.pop_back();
-    if ( !scheduled_actions.empty() )
-      cast_event = make_event( *sim, cast_period, [ this ] { schedule_cast(); } );
+    // TODO: Check what actually happens when there are no valid targets for part of the Phoenix duration.
+    if ( !tl.empty() )
+    {
+      if ( spells_used % 2 == 1 && exceptional_spells_remaining > 0 )
+      {
+        action = exceptional_actions[ rng().range( exceptional_actions.size() ) ];
+        // TODO: What happens with Ignite the Future and without Codex of the Sunstriders?
+        o()->buffs.spellfire_sphere->decrement();
+        o()->buffs.lingering_embers->trigger();
+        exceptional_spells_used++;
+        exceptional_spells_remaining--;
+      }
+      else
+      {
+        if ( o()->options.arcane_phoenix_rotation_override == arcane_phoenix_rotation::DEFAULT && tl.size() > 1
+          || o()->options.arcane_phoenix_rotation_override == arcane_phoenix_rotation::AOE )
+        {
+          action = aoe_actions[ rng().range( aoe_actions.size() ) ];
+        }
+        else
+        {
+          action = st_actions[ rng().range( st_actions.size() ) ];
+        }
+      }
+
+      player_t* t = tl[ rng().range( tl.size() ) ];
+      action->execute_on_target( t );
+    }
+
+    spells_used++;
+    cast_event = make_event( *sim, cast_period, [ this ] { schedule_cast(); } );
   }
 
   void arise() override
@@ -1370,21 +1401,9 @@ struct arcane_phoenix_pet_t final : public mage_pet_t
     mage_pet_t::arise();
 
     exceptional_meteor_used = false;
+    spells_used = 0;
     exceptional_spells_used = 0;
-
-    // TODO: Fully test the RNG here.
-    scheduled_actions.clear();
-    assert( expiration );
-    int num_spells = static_cast<int>( expiration->remains() / cast_period );
-    assert( num_spells > 0 );
-    for ( int i = 0; i < num_spells; i++ )
-    {
-      if ( i < o()->buffs.spellfire_sphere->check() && o()->talents.codex_of_the_sunstriders.ok() )
-        scheduled_actions.push_back( exceptional_actions[ rng().range( exceptional_actions.size() ) ] );
-      else
-        scheduled_actions.push_back( base_actions[ rng().range( base_actions.size() ) ] );
-    }
-    rng().shuffle( scheduled_actions.begin(), scheduled_actions.end() );
+    exceptional_spells_remaining = o()->talents.codex_of_the_sunstriders.ok() ? o()->buffs.spellfire_sphere->check() : 0;
 
     assert( !cast_event );
     schedule_cast();
@@ -1422,6 +1441,13 @@ struct arcane_barrage_t final : public arcane_phoenix_spell_t
 {
   arcane_barrage_t( std::string_view n, arcane_phoenix_pet_t* p ) :
     arcane_phoenix_spell_t( n, p, p->find_spell( 450499 ) )
+  {}
+};
+
+struct pyroblast_t final : public arcane_phoenix_spell_t
+{
+  pyroblast_t( std::string_view n, arcane_phoenix_pet_t* p ) :
+    arcane_phoenix_spell_t( n, p, p->find_spell( 450461 ) )
   {}
 };
 
@@ -1553,9 +1579,12 @@ void arcane_phoenix_pet_t::create_actions()
 {
   mage_pet_t::create_actions();
 
-  base_actions.push_back( get_action<arcane_barrage_t>( "arcane_barrage", this ) );
-  base_actions.push_back( get_action<flamestrike_t>( "flamestrike", this ) );
-  base_actions.push_back( get_action<meteorite_t>( "meteorite", this ) );
+  st_actions.push_back( get_action<arcane_barrage_t>( "arcane_barrage", this ) );
+  st_actions.push_back( get_action<pyroblast_t>( "pyroblast", this ) );
+
+  aoe_actions.push_back( get_action<arcane_barrage_t>( "arcane_barrage", this ) );
+  aoe_actions.push_back( get_action<flamestrike_t>( "flamestrike", this ) );
+  aoe_actions.push_back( get_action<meteorite_t>( "meteorite", this ) );
 
   if ( o()->talents.codex_of_the_sunstriders.ok() )
   {
@@ -3360,7 +3389,6 @@ struct arcane_barrage_t final : public arcane_mage_spell_t
     p()->resource_gain( RESOURCE_MANA, p()->resources.max[ RESOURCE_MANA ] * mana_pct, p()->gains.arcane_barrage, this );
 
     p()->buffs.arcane_tempo->trigger();
-    p()->trigger_mana_cascade();
     p()->buffs.arcane_charge->expire();
     p()->buffs.arcane_harmony->expire();
 
@@ -3384,15 +3412,16 @@ struct arcane_barrage_t final : public arcane_mage_spell_t
       p()->state.trigger_leydrinker = true;
     }
 
+    p()->consume_burden_of_power();
+    p()->trigger_spellfire_spheres();
+    p()->trigger_mana_cascade();
+
     if ( p()->buffs.glorious_incandescence->check() )
     {
       p()->buffs.glorious_incandescence->decrement();
       p()->trigger_arcane_charge( glorious_incandescence_charges );
       p()->state.trigger_glorious_incandescence = true;
     }
-
-    p()->consume_burden_of_power();
-    p()->trigger_spellfire_spheres();
 
     if ( p()->buffs.intuition->check() )
     {
@@ -4019,7 +4048,7 @@ struct arcane_surge_t final : public arcane_mage_spell_t
     p()->trigger_clearcasting( 1.0, 0_ms );
 
     if ( p()->pets.arcane_phoenix )
-      p()->pets.arcane_phoenix->summon( arcane_surge_duration );
+      p()->pets.arcane_phoenix->summon( arcane_surge_duration ); // TODO: The extra random pet duration can sometimes result in an extra cast.
 
     arcane_mage_spell_t::execute();
   }
@@ -4197,7 +4226,7 @@ struct combustion_t final : public fire_mage_spell_t
       p()->buffs.lit_fuse->predict();
     }
     if ( p()->pets.arcane_phoenix )
-      p()->pets.arcane_phoenix->summon( combustion_duration );
+      p()->pets.arcane_phoenix->summon( combustion_duration ); // TODO: The extra random pet duration can sometimes result in an extra cast.
 
     p()->expression_support.kindling_reduction = 0_ms;
   }
@@ -7037,6 +7066,18 @@ struct splinter_t final : public mage_spell_t
     if ( splinterstorm && p()->specialization() == MAGE_FROST )
       trigger_winters_chill( s );
   }
+
+  timespan_t travel_time() const override
+  {
+    timespan_t t = mage_spell_t::travel_time();
+
+    // Spread the splinter impacts around a bit. Note that we have to use gauss( double, double )
+    // here because the timespan one doesn't produce negative values.
+    if ( !splinterstorm )
+      t += timespan_t::from_millis( rng().gauss( 0.0, 5.0 ) );
+
+    return std::max( t, 0_ms );
+  }
 };
 
 // ==========================================================================
@@ -7685,6 +7726,18 @@ void mage_t::create_options()
   add_option( opt_timespan( "mage.glacial_spike_delay", options.glacial_spike_delay, 0_ms, timespan_t::max() ) );
   add_option( opt_bool( "mage.treat_bloodlust_as_time_warp", options.treat_bloodlust_as_time_warp ) );
   add_option( opt_uint( "mage.initial_spellfire_spheres", options.initial_spellfire_spheres ) );
+  add_option( opt_func( "mage.arcane_phoenix_rotation_override", [ this ] ( sim_t*, util::string_view name, util::string_view value )
+              {
+                if ( value.empty() || value == "default" )
+                  options.arcane_phoenix_rotation_override = arcane_phoenix_rotation::DEFAULT;
+                else if ( value == "st" )
+                  options.arcane_phoenix_rotation_override = arcane_phoenix_rotation::ST;
+                else if ( value == "aoe" )
+                  options.arcane_phoenix_rotation_override = arcane_phoenix_rotation::AOE;
+                else
+                  throw std::invalid_argument( "valid options are 'default', 'st', and 'aoe'." );
+                return true;
+              } ) );
 
   player_t::create_options();
 }
@@ -8384,8 +8437,9 @@ void mage_t::create_buffs()
                                    ->set_default_value( find_spell( 448604 )->effectN( specialization() == MAGE_FIRE ? 6 : 1 ).percent() )
                                    ->set_chance( talents.codex_of_the_sunstriders.ok() );
   buffs.mana_cascade           = make_buff( this, "mana_cascade", find_spell( specialization() == MAGE_FIRE ? 449314 : 449322 ) )
-                                   ->set_default_value_from_effect( specialization() == MAGE_FIRE ? 2 : 1,
-                                                                    specialization() == MAGE_FIRE ? 0.001 : 0.01 )
+                                   ->set_default_value( specialization() == MAGE_FIRE || bugs
+                                     ? find_spell( 449314 )->effectN( 2 ).base_value() * 0.001
+                                     : find_spell( 449322 )->effectN( 1 ).percent() )
                                    ->set_pct_buff_type( STAT_PCT_BUFF_HASTE )
                                    ->set_stack_change_callback( [ this ] ( buff_t*, int, int cur )
                                      {
@@ -9348,39 +9402,34 @@ void mage_t::trigger_spellfire_spheres()
 
   buffs.spellfire_spheres->trigger();
 
-  if ( buffs.spellfire_spheres->check() >= max_stacks )
+  auto check_stacks = [ this, s = max_stacks ]
   {
-    buffs.spellfire_sphere->trigger();
-    buffs.spellfire_spheres->expire();
-    buffs.burden_of_power->trigger();
-  }
+    if ( buffs.spellfire_spheres->check() >= s )
+    {
+      if ( talents.ignite_the_future.ok() && pets.arcane_phoenix && !pets.arcane_phoenix->is_sleeping() && !buffs.spellfire_sphere->at_max_stacks() )
+        debug_cast<pets::arcane_phoenix::arcane_phoenix_pet_t*>( pets.arcane_phoenix )->exceptional_spells_remaining++;
+      buffs.spellfire_sphere->trigger();
+      buffs.spellfire_spheres->expire();
+      buffs.burden_of_power->trigger();
+    }
+  };
+
+  // For Arcane, casting Arcane Blast and Arcane Barrage together results in both stacks of spellfire_spheres
+  // being applied before they are consumed. This can be handled with a delay here. This does not work for Firek
+  // because Pyroblast will consume the Burden of Power that was applied by the Hot Streak that it just consumed.
+  if ( specialization() == MAGE_FIRE )
+    check_stacks();
+  else
+    make_event( *sim, 15_ms, check_stacks );
 }
 
 void mage_t::consume_burden_of_power()
 {
-  // TODO: Revisit this whole function once the delay is removed in game
-  if ( !buffs.burden_of_power->check() || events.burden_of_power )
+  if ( !buffs.burden_of_power->check() )
     return;
 
-  // Buff is consumed after a short delay, allowing multiple spells to benefit.
-  // TODO: Double check this later
-  events.burden_of_power = make_event( *sim, 0_ms, [ this ]
-  {
-    buffs.burden_of_power->decrement();
-    events.burden_of_power = nullptr;
-  } );
-
+  buffs.burden_of_power->decrement();
   buffs.glorious_incandescence->trigger();
-
-  // Sometimes when Glorious Incandescence is already up and Arcane Barrage
-  // consumes Burden of Power, Glorious Incandescence will not actually be
-  // consumed. Because we have already consumed it in simc, we can unset the
-  // state flag here to prevent it from working.
-  // TODO: Test the probability that this occurs. For now, assume that this
-  // is due to two randomly ordered events and has a 50% chance of happening.
-  // TODO: Double check this later
-  if ( bugs && rng().roll( 0.5 ) )
-    state.trigger_glorious_incandescence = false;
 }
 
 // If the target isn't specified, picks a random target.

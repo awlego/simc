@@ -224,7 +224,7 @@ jobs:
             hunter_beast_mastery, hunter_marksmanship, hunter_survival,
             mage_arcane, mage_fire, mage_frost,
             monk_brewmaster, monk_windwalker,
-            paladin_protection,
+            paladin_protection, paladin_retribution,
             priest_shadow,
             rogue_assassination, rogue_outlaw, rogue_subtlety,
             shaman_elemental,
@@ -512,6 +512,7 @@ jobs:
         run: ${{ github.workspace }}/generate_profiles_ci.sh
 
       - name: Commit Profiles
+        continue-on-error: true
         uses: EndBug/add-and-commit@v9.1.4
         with:
           message: 'Regenerate profiles'

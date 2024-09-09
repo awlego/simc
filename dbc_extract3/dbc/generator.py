@@ -2062,6 +2062,7 @@ class SpellDataGenerator(DataGenerator):
           ( 464515, 0 ),                            # Arcane Echo ICD
           ( 449559, 0 ), ( 449560, 0 ), ( 449562, 0 ), ( 449569, 0 ), # Meteorite (Glorious Incandescence)
           ( 450499, 0 ),                            # Arcane Barrage (Arcane Phoenix)
+          ( 450461, 0 ),                            # Pyroblast (Arcane Phoenix)
           ( 450462, 0 ),                            # Flamestrike (Arcane Phoenix)
           ( 453326, 0 ),                            # Arcane Surge (Arcane Phoenix)
           ( 450421, 0 ),                            # Greater Pyroblast (Arcane Phoenix)
@@ -3404,8 +3405,8 @@ class SpellDataGenerator(DataGenerator):
         for id in id_keys:
             spell = self.db('SpellName')[id]
 
-            # Unused hotfix IDs: 7,
-            # MAX hotfix id: 39
+            # Unused hotfix IDs: 5, 6, 7
+            # MAX hotfix id: 54
             hotfix = HotfixDataRecord()
             power_count = 0
 
@@ -3435,8 +3436,8 @@ class SpellDataGenerator(DataGenerator):
             fields += [ u'%#.8x' % ids.get(id, { 'mask_class' : 0, 'mask_race': 0 })['mask_class'] ]
 
             scaling_entry = spell.get_link('scaling')
-            fields += scaling_entry.field('max_scaling_level')
-            hotfix.add(scaling_entry, ('max_scaling_level', 8))
+            fields += scaling_entry.field('max_scaling_level', 'min_scaling_level', 'scale_from_ilevel')
+            hotfix.add(scaling_entry, ('max_scaling_level', 8), ('min_scaling_level', 53), ('scale_from_ilevel', 54))
 
             level_entry = spell.get_link('level')
 
