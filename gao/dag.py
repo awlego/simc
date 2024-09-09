@@ -1,6 +1,5 @@
 import time
 from collections import defaultdict
-from tqdm import tqdm
 
 # Define the complete skill tree as a directed acyclic graph with section point requirements
 skill_tree = {
@@ -75,8 +74,47 @@ def get_available_skills(activated_skills):
                 available.add(child)
     return available
 
+def check_active_parents(node, activated_skills):
+    """Checks to see if a node has at least one active parent"""
+    # would be better if my skill tree had info about the parents, but I can reconstruct it from the children
+    for skill in skill_tree:
+        if node in skill_tree[skill]['children']:
+             # this is a parent
+            if skill in activated_skills:
+                return True
+    return False
+
+# print(check_active_parents("F2", set(skill_tree.keys())))
+# print(check_active_parents("F2", set(['E2', 'A1'])))
+# print(check_active_parents("F2", set(['B2', 'A1'])))
+# print()
+
+
+def get_reverse_available_skills(activated_skills):
+    """gets the skills that you are allowed to remove"""
+    available_to_unselect = set()
+
+    # if unselecting this node would make a child of this node have no active parents, then we can't select it!
+    for skill in activated_skills:
+        available = True
+        activated_skills.remove(skill)
+        for child in skill_tree[skill]['children']:
+            has_active_parents = check_active_parents(child, activated_skills)
+            if has_active_parents == False:
+                available = False
+                break
+            # no children were activated, we may continue
+        # if no children were selected and section 1/2 are valid, we may unselect this node safely
+        if available and is_section_unlocked(activated_skills, 1) and is_section_unlocked(activated_skills, 2):
+            # print(available)
+            available_to_unselect.add(skill)
+        activated_skills.add(skill)
+
+    return available_to_unselect
+
+
 def generate_combinations(skill_tree, target_points):
-    """Performs a dynamic programming search to find all valid combinations in the skill tree, 
+    """Performs a search to find all valid combinations in the skill tree, 
     given the target_points and respecting the section requirements and the tree pathing.
     
     It will correctly backtrack and continue down the paths if downwards searching stopped due to 
@@ -88,11 +126,9 @@ def generate_combinations(skill_tree, target_points):
         return valid_combinations
     
     if target_points == 1:
-        valid_combinations.update(frozenset(['A1']))
+        valid_combinations.add(frozenset(['A1']))
         return valid_combinations
     
-    pbar = tqdm(total=0, desc="Total combinations found", position=0)
-
     def search(current_node, activated_skills, valid_combinations):
         # print()
         # put a point in the current node
@@ -109,10 +145,6 @@ def generate_combinations(skill_tree, target_points):
             # print("Valid combinations: ", valid_combinations)
             activated_skills.remove(current_node)
 
-            pbar.total = len(valid_combinations)
-            pbar.desc = f"Total combinations found: {pbar.total}"
-            pbar.refresh()
-            
             # return early, don't bother searching children since we're already at max points.
             return valid_combinations
         
@@ -123,7 +155,7 @@ def generate_combinations(skill_tree, target_points):
             return valid_combinations
         
         # (we don't have enough points) for child in node children, search deeper
-        for node in tqdm(get_available_skills(activated_skills), desc=f"Exploring nodes from {current_node}", leave=False):
+        for node in get_available_skills(activated_skills):
             # print("Exploring branch ", node)
             valid_combinations = search(node, activated_skills, valid_combinations)
         
@@ -135,20 +167,78 @@ def generate_combinations(skill_tree, target_points):
     activated_skills = set()
     search(root_node, activated_skills, valid_combinations)
     return valid_combinations
-    
-    
 
+def reverse_generate_combinations(skill_tree, target_points):
+    """Performs a search to find all valid combinations in the skill tree, 
+    given the target_points and respecting the section requirements and the tree pathing.
+    
+    It will correctly backtrack and continue down the paths if downwards searching stopped due to 
+    hitting the section point requirements"""
 
-# Example usage
-target_points = 43
+    valid_combinations = set()
+
+    if target_points == len(skill_tree.keys()):
+        valid_combinations.add(frozenset(skill_tree.keys()))
+        return valid_combinations
+    
+    def search(current_node, activated_skills, valid_combinations):
+        # print()
+        # remove a point in the current node
+        activated_skills.remove(current_node)
+        # print("Current activated skills: ", activated_skills)
+
+        # check if we have enough points
+        talent_points_spent = calculate_points(activated_skills)
+        # print(talent_points_spent)
+
+        # if we do, add the combination to the set.
+        if talent_points_spent == target_points:
+            # print("frozenset of activated_skills before adding to valid combos: ", frozenset(activated_skills))
+            valid_combinations.add(frozenset(activated_skills))
+            # print("Valid combinations: ", valid_combinations)
+
+            # backtrack
+            activated_skills.add(current_node)
+
+            # return early, don't bother searching children since we're already at max points.
+            return valid_combinations
+        
+        # if we have too few points, return and don't bother searching parents
+        if talent_points_spent < target_points:
+            # remove the current skill so we're back at the right number.
+            activated_skills.add(current_node)
+            return valid_combinations
+        
+        # (we don't have enough points) for child in node children, search deeper
+        # print("Reverse available skills to unselect: ", get_reverse_available_skills(activated_skills))
+        for node in get_reverse_available_skills(activated_skills):
+            # print("Exploring branch ", node)
+            valid_combinations = search(node, activated_skills, valid_combinations)
+        
+        # add the current skill so we can backtrack
+        activated_skills.add(current_node)
+        return valid_combinations
+    
+    root_node = 'J5'
+    activated_skills = set(skill_tree.keys())
+    for node in get_reverse_available_skills(activated_skills):
+        # print(node)
+        valid_combinations = search(node, activated_skills, valid_combinations)
+    # search(root_node, activated_skills, valid_combinations)
+    return valid_combinations
+
+# print(list(skill_tree.keys()), len(list(skill_tree.keys())))
+target_points = 38
 start_time = time.time()
-valid_combinations = generate_combinations(skill_tree, target_points)
+valid_combinations = reverse_generate_combinations(skill_tree, target_points)
 end_time = time.time()
-print(f"Found {len(valid_combinations)} valid combinations for {target_points} points:")
 for combo in valid_combinations:
-    print(combo)
+    print("unselected talents: ", skill_tree.keys() - combo)
+    # print(combo)
 
 print(f"Time taken: {end_time - start_time:.2f} seconds")
+print(f"Found {len(valid_combinations)} valid combinations for {target_points} points:")
+
 
 
 # # Example usage
