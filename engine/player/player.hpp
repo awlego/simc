@@ -572,6 +572,9 @@ struct player_t : public actor_t
     buff_t* ingest_mineral;  // earthen well fed racial
     buff_t* surekian_grace;  // sik'ran's shadow arsenal barrage movement speed buff
     buff_t* earthen_ire;     // sigil of algari concordance tank buff
+    buff_t* quickwicks_quick_trick_wick_walk;  // quickwick candlestick movement speed buff
+    buff_t* building_momentum;  // scroll of momentum counter buff
+    buff_t* full_momentum;      // scroll of momentum max buff
   } buffs;
 
   struct debuffs_t
@@ -828,9 +831,11 @@ struct player_t : public actor_t
   {
     // Starting stance for Sik'rans Shadow Arsenal
     player_option_t<std::string> sikrans_endless_arsenal_stance = "";
-    // starting stacks for Ovinax's Mercurial Egg
+    // starting & desired stacks for Ovinax's Mercurial Egg
     int ovinaxs_mercurial_egg_initial_primary_stacks = 30;
-    int ovinaxs_mercurial_egg_initial_secondary_stacks = 0;
+    int ovinaxs_mercurial_egg_desired_primary_stacks = 20;
+    // how close to desired stacks you can be before potentially adjusting
+    int ovinaxs_mercurial_egg_desired_primary_stacks_leeway = 3;
     // time to pick up Entropic Skardyn Core fragment
     timespan_t entropic_skardyn_core_pickup_delay = 4_s;
     timespan_t entropic_skardyn_core_pickup_stddev = 1_s;
@@ -860,6 +865,9 @@ struct player_t : public actor_t
     // Allied Binding of Binding on you
     int binding_of_binding_on_you = 0;
     double binding_of_binding_ally_skip_chance = 0.8;
+    // Concoction: Kiss of Death buff remaining time before you re-use for antidote
+    timespan_t concoction_kiss_of_death_buff_remaining_min = 1_s;
+    timespan_t concoction_kiss_of_death_buff_remaining_max = 2_s;
   } thewarwithin_opts;
 
 private:

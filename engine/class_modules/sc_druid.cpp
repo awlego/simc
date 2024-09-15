@@ -547,6 +547,7 @@ public:
   bool orbital_bug;
   std::vector<event_t*> persistent_event_delay;
   event_t* astral_power_decay;
+  timespan_t last_starfire_cast;
   struct dot_list_t
   {
     std::vector<dot_t*> moonfire;
@@ -5407,6 +5408,7 @@ struct mangle_t final : public use_fluid_form_t<DRUID_GUARDIAN,
                                    trigger_aggravate_wounds_t<DRUID_GUARDIAN,
                                      trigger_wildpower_surge_t<DRUID_GUARDIAN, bear_attack_t>>>>
 {
+  action_t* strike = nullptr;
   int inc_targets = 0;
 
   DRUID_ABILITY( mangle_t, base_t, "mangle", p->find_class_spell( "Mangle" ) )
@@ -5430,9 +5432,9 @@ struct mangle_t final : public use_fluid_form_t<DRUID_GUARDIAN,
 
     if ( p->talent.strike_for_the_heart.ok() )
     {
-      impact_action = p->get_secondary_action<druid_heal_t>(
+      strike = p->get_secondary_action<druid_heal_t>(
         "strike_for_the_heart", "strike_for_the_heart", p, find_trigger( p->talent.strike_for_the_heart ).trigger() );
-      impact_action->background = true;
+      strike->background = true;
     }
   }
 
@@ -5461,6 +5463,9 @@ struct mangle_t final : public use_fluid_form_t<DRUID_GUARDIAN,
       p()->buff.killing_strikes_combat->expire( this );
       p()->buff.ravage_maul->trigger();
     }
+
+    if ( strike )
+      strike->execute();
   }
 };
 
@@ -7122,7 +7127,19 @@ struct force_of_nature_t final : public trigger_control_of_the_dream_t<druid_spe
     base_t::execute();
 
     p()->pets.force_of_nature.spawn( num );
-    p()->buff.dream_burst->trigger( dream_surge_num );
+
+    if ( p()->talent.dream_surge.ok() )
+    {
+      p()->buff.dream_burst->trigger( dream_surge_num );
+
+      // if force of nature is queued after starfire, the starfire will still consume a stack of dream burst and proc
+      // the damage even though the buff is applied after starfire impact. assume a 10ms window for now.
+      if ( sim->current_time() - p()->last_starfire_cast <= 10_ms )
+      {
+        p()->active.dream_burst->execute_on_target( p()->last_foreground_action->target );
+        p()->buff.dream_burst->decrement();
+      }
+    }
   }
 };
 
@@ -8179,6 +8196,8 @@ struct starfire_base_t : public use_fluid_form_t<DRUID_BALANCE, ap_generator_t>
     aoe = -1;
     reduced_aoe_targets = data().effectN( p->specialization() == DRUID_BALANCE ? 5 : 3 ).base_value();
 
+    base_aoe_multiplier = 1.0 / ( 1.0 + find_effect( p->talent.lunar_calling, &data() ).percent() );
+
     auto m_data = p->get_modified_spell( &data() )
       ->parse_effects( p->talent.wild_surges )
       ->parse_effects( p->buff.eclipse_lunar, p->talent.umbral_intensity )
@@ -8306,6 +8325,12 @@ struct starfire_base_t : public use_fluid_form_t<DRUID_BALANCE, ap_generator_t>
 struct starfire_t final : public umbral_embrace_t<eclipse_e::LUNAR, starfire_base_t>
 {
   DRUID_ABILITY( starfire_t, base_t, "starfire", p->talent.starfire ) {}
+
+  void execute() override
+  {
+    base_t::execute();
+    p()->last_starfire_cast = sim->current_time();
+  }
 };
 
 // Starsurge Spell ==========================================================
@@ -11493,10 +11518,10 @@ std::string druid_t::default_flask() const
 {
   switch ( specialization() )
   {
-    case DRUID_BALANCE:     return "tempered_mastery_3";
-    case DRUID_FERAL:       return "tempered_aggression_3";
-    case DRUID_GUARDIAN:    return "tempered_swiftness_3";
-    case DRUID_RESTORATION: return "tempered_swiftness_3";
+    case DRUID_BALANCE:     return "flask_of_alchemical_chaos_3";
+    case DRUID_FERAL:       return "flask_of_alchemical_chaos_3";
+    case DRUID_GUARDIAN:    return "flask_of_alchemical_chaos_3";
+    case DRUID_RESTORATION: return "flask_of_alchemical_chaos_3";
     default:                return "disabled";
   }
 }
@@ -11517,10 +11542,10 @@ std::string druid_t::default_food() const
 {
   switch ( specialization() )
   {
-    case DRUID_BALANCE:     return "stuffed_cave_peppers";
-    case DRUID_FERAL:       return "mycobloom_risotto";
-    case DRUID_GUARDIAN:    return "mycobloom_risotto";
-    case DRUID_RESTORATION: return "stuffed_cave_peppers";
+    case DRUID_BALANCE:     return "feast_of_the_midnight_masquerade";
+    case DRUID_FERAL:       return "beledars_bounty";
+    case DRUID_GUARDIAN:    return "feast_of_the_midnight_masquerade";
+    case DRUID_RESTORATION: return "feast_of_the_midnight_masquerade";
     default:                return "disabled";
   }
 }
@@ -11537,8 +11562,8 @@ std::string druid_t::default_temporary_enchant() const
   switch ( specialization() )
   {
     case DRUID_BALANCE:     return str + "algari_mana_oil_3";
-    case DRUID_FERAL:       return str + "algari_mana_oil_3";
-    case DRUID_GUARDIAN:    return str + "algari_mana_oil_3";
+    case DRUID_FERAL:       return str + "ironclaw_whetstone_3";
+    case DRUID_GUARDIAN:    return str + "ironclaw_whetstone_3";
     case DRUID_RESTORATION: return str + "algari_mana_oil_3";
     default:                return "disabled";
   }
@@ -12268,6 +12293,7 @@ void druid_t::reset()
   orbital_bug = true;
   persistent_event_delay.clear();
   astral_power_decay = nullptr;
+  last_starfire_cast = 0_ms;
   dot_lists.moonfire.clear();
   dot_lists.sunfire.clear();
   dot_lists.thrash_bear.clear();
@@ -12465,6 +12491,9 @@ void druid_t::combat_begin()
     if ( !buff.dreamstate->check() )
         buff.dreamstate->trigger();
   }
+
+  buff.blooming_infusion_damage_counter->expire();
+  buff.blooming_infusion_heal_counter->expire();
 /*
   if ( talent.adaptive_swarm.ok() && !prepull_swarm.empty() && find_action( "adaptive_swarm" ) )
   {
@@ -13991,7 +14020,9 @@ void druid_t::parse_action_effects( action_t* action )
   _a->parse_effects( buff.balance_of_all_things_arcane, talent.balance_of_all_things );
   _a->parse_effects( buff.balance_of_all_things_arcane, effect_mask_t( false ).enable( 3 ),
                      talent.balance_of_all_things->effectN( 1 ).percent() );
-  _a->parse_effects( buff.balance_of_all_things_nature, talent.balance_of_all_things );
+  _a->parse_effects( buff.balance_of_all_things_nature, talent.balance_of_all_things,
+                     // nature boat applies to dream burst (433850) via hidden script
+                     affect_list_t( 1 ).add_spell( 433850 ) );
   _a->parse_effects( buff.balance_of_all_things_nature, effect_mask_t( false ).enable( 3 ),
                      talent.balance_of_all_things->effectN( 1 ).percent() );
 
@@ -14006,7 +14037,7 @@ void druid_t::parse_action_effects( action_t* action )
   // instead of data value
   _a->parse_effects( buff.eclipse_solar, effect_mask_t( true ).disable( 1, 8 ), talent.umbral_intensity );
   _a->parse_effects( buff.eclipse_solar, effect_mask_t( false ).enable( 1, 8 ), USE_CURRENT,
-                     // damage (eff#1) applies to orbital strike and goldrinn's fang (label 2391) and dream burst(433850)
+                     // damage (eff#1) applies to orbital strike and goldrinn's fang (label 2391) and dream burst (433850)
                      // via hidden script
                      affect_list_t( 1 ).add_label( 2391 ).add_spell( 433850 ) );
 

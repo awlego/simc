@@ -8,13 +8,13 @@ TWW1_Death_Knight_Frost_Shattering_Deathbringer.simc
 TWW1_Death_Knight_Unholy.simc
 TWW1_Death_Knight_Unholy_San'layn.simc
 
-# TWW1_Demon_Hunter_Havoc.simc
+TWW1_Demon_Hunter_Havoc.simc
 # TWW1_Demon_Hunter_Havoc_SD.simc
 TWW1_Demon_Hunter_Vengeance.simc
 
-# TWW1_Druid_Balance.simc
-# TWW1_Druid_Feral.simc
-# TWW1_Druid_Guardian.simc
+TWW1_Druid_Balance.simc
+TWW1_Druid_Feral.simc
+TWW1_Druid_Guardian.simc
 
 TWW1_Evoker_Devastation.simc
 
@@ -28,18 +28,20 @@ TWW1_Mage_Arcane.simc
 
 # TWW1_Monk_Brewmaster.simc
 # TWW1_Monk_Brewmaster_Niuzao.simc
-# TWW1_Monk_Windwalker.simc
+TWW1_Monk_Windwalker.simc
+TWW1_Monk_Windwalker_Celestial.simc
 
 TWW1_Paladin_Protection.simc
-# TWW1_Paladin_Retribution.simc
-# TWW1_Paladin_Retribution_CS.simc
+TWW1_Paladin_Retribution.simc
+TWW1_Paladin_Retribution_Templar.simc
 
 TWW1_Priest_Shadow.simc
 
-# TWW1_Rogue_Assassination.simc
+TWW1_Rogue_Assassination.simc
+TWW1_Rogue_Assassination_Fatebound.simc
 TWW1_Rogue_Outlaw.simc
 TWW1_Rogue_Outlaw_HO.simc
-# TWW1_Rogue_Subtlety.simc
+TWW1_Rogue_Subtlety.simc
 
 TWW1_Shaman_Elemental.simc
 TWW1_Shaman_Elemental_Storm.simc

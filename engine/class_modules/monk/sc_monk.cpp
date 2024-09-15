@@ -2518,7 +2518,8 @@ struct strike_of_the_windlord_off_hand_t : public monk_melee_attack_t
       int thunderfist_stacks = 1;
 
       if ( s->chain_target == 0 )
-        thunderfist_stacks += as<int>( p()->talent.windwalker.thunderfist->effectN( 1 ).base_value() );
+        // The first target will trigger the 4 stacks of the Thunderfist buff, all others will trigger 1 stack
+        thunderfist_stacks = as<int>( p()->talent.windwalker.thunderfist->effectN( 1 ).base_value() );
 
       p()->buff.thunderfist->trigger( thunderfist_stacks );
     }
@@ -6820,8 +6821,8 @@ void monk_t::init_spells()
     baseline.brewmaster.stagger                    = find_specialization_spell( "Stagger" );
     baseline.brewmaster.stagger_self_damage        = find_spell( 124255 );
     baseline.brewmaster.light_stagger              = find_spell( 124275 );
-    baseline.brewmaster.moderate_stagger           = find_spell( 124273 );
-    baseline.brewmaster.heavy_stagger              = find_spell( 124272 );
+    baseline.brewmaster.moderate_stagger           = find_spell( 124274 );
+    baseline.brewmaster.heavy_stagger              = find_spell( 124273 );
     baseline.brewmaster.spinning_crane_kick        = find_specialization_spell( "Spinning Crane Kick" );
     baseline.brewmaster.spinning_crane_kick_rank_2 = find_rank_spell( "Spinning Crane Kick", "Rank 2", current_spec );
     baseline.brewmaster.touch_of_death_rank_3      = find_rank_spell( "Touch of Death", "Rank 3", current_spec );

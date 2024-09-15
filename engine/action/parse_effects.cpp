@@ -7,6 +7,7 @@
 
 #include "dbc/dbc.hpp"
 #include "dbc/sc_spell_info.hpp"
+#include "player/stats.hpp"
 #include "report/decorators.hpp"
 #include "sim/cooldown.hpp"
 #include "sim/sim.hpp"
@@ -1354,21 +1355,12 @@ std::vector<player_effect_t>* parse_action_base_t::get_effect_vector( const spel
     str = "cooldown";
     return &recharge_multiplier_effects;
   }
-  else if ( eff.subtype() == A_MOD_RECHARGE_RATE_CATEGORY )
+  else if ( ( eff.subtype() == A_MOD_CHARGE_RECHARGE_RATE && _action->data().charges() ) ||
+            ( ( eff.subtype() == A_MOD_RECHARGE_RATE || eff.subtype() == A_MOD_RECHARGE_RATE_LABEL ) &&
+              !_action->data().charges() ) )
   {
-    if ( !_action->data().charges() )
-    {
-      str = "recharge rate";
-      return &recharge_rate_effects;
-    }
-  }
-  else if ( eff.subtype() == A_MOD_RECHARGE_RATE_LABEL || eff.subtype() == A_MOD_RECHARGE_RATE )
-  {
-    if ( _action->data().charges() )
-    {
-      str = "recharge rate";
-      return &recharge_rate_effects;
-    }
+    str = "recharge rate";
+    return &recharge_rate_effects;
   }
   else if ( eff.subtype() == A_MODIFY_SCHOOL )
   {
@@ -1565,7 +1557,12 @@ bool parse_action_base_t::check_affected_list( const std::vector<affect_list_t>&
 
 void parse_action_base_t::parsed_effects_html( report::sc_html_stream& os )
 {
-  if ( total_effects_count() )
+  size_t c = 0;
+  for ( auto a : _action->stats->action_list )
+    if ( auto tmp = dynamic_cast<parse_action_base_t*>( a ) )
+      c += tmp->total_effects_count();
+
+  if ( c )
   {
     os << "<div>"
        << "<h4>Affected By (Dynamic)</h4>"

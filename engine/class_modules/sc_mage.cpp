@@ -1377,7 +1377,7 @@ struct arcane_phoenix_pet_t final : public mage_pet_t
       }
       else
       {
-        if ( o()->options.arcane_phoenix_rotation_override == arcane_phoenix_rotation::DEFAULT && tl.size() > 1
+        if ( ( o()->options.arcane_phoenix_rotation_override == arcane_phoenix_rotation::DEFAULT && tl.size() > 1 )
           || o()->options.arcane_phoenix_rotation_override == arcane_phoenix_rotation::AOE )
         {
           action = aoe_actions[ rng().range( aoe_actions.size() ) ];
@@ -7443,7 +7443,7 @@ struct meteor_burn_event_t final : public mage_event_t
   const char* name() const override
   { return "meteor_burn_event"; }
 
-  void execute()
+  void execute() override
   {
     mage->events.meteor_burn = nullptr;
 
@@ -7726,7 +7726,7 @@ void mage_t::create_options()
   add_option( opt_timespan( "mage.glacial_spike_delay", options.glacial_spike_delay, 0_ms, timespan_t::max() ) );
   add_option( opt_bool( "mage.treat_bloodlust_as_time_warp", options.treat_bloodlust_as_time_warp ) );
   add_option( opt_uint( "mage.initial_spellfire_spheres", options.initial_spellfire_spheres ) );
-  add_option( opt_func( "mage.arcane_phoenix_rotation_override", [ this ] ( sim_t*, util::string_view name, util::string_view value )
+  add_option( opt_func( "mage.arcane_phoenix_rotation_override", [ this ] ( sim_t*, util::string_view, util::string_view value )
               {
                 if ( value.empty() || value == "default" )
                   options.arcane_phoenix_rotation_override = arcane_phoenix_rotation::DEFAULT;
@@ -9415,7 +9415,7 @@ void mage_t::trigger_spellfire_spheres()
   };
 
   // For Arcane, casting Arcane Blast and Arcane Barrage together results in both stacks of spellfire_spheres
-  // being applied before they are consumed. This can be handled with a delay here. This does not work for Firek
+  // being applied before they are consumed. This can be handled with a delay here. This does not work for Fire
   // because Pyroblast will consume the Burden of Power that was applied by the Hot Streak that it just consumed.
   if ( specialization() == MAGE_FIRE )
     check_stacks();

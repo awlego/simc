@@ -2533,7 +2533,7 @@ std::function<void( death_knight_pet_t* )> parent_pet_action_fn( action_t* paren
         auto it = range::find( parent->child_action, a->name_str, &action_t::name_str );
         if ( it != parent->child_action.end() )
           a->stats = ( *it )->stats;
-        else
+        else if ( a->harmful )
           parent->add_child( a );
       }
     }
@@ -3988,6 +3988,7 @@ struct horseman_pet_t : public death_knight_pet_t
     {
       parse_options( options_str );
       trigger_gcd = 1_s;
+      harmful     = false;
     }
 
     void init_finished() override
@@ -4413,6 +4414,7 @@ struct abomination_pet_t : public death_knight_pet_t
       background    = true;
       aoe           = 0;
       impact_action = dk()->active_spells.virulent_plague;
+      harmful       = false;
     }
   };
 
@@ -5195,6 +5197,8 @@ struct breath_of_sindragosa_buff_t : public death_knight_buff_t
       if ( current_tick == 0 )
       {
         bos_damage->execute_on_target( bos_target );
+        p->buffs.unleashed_frenzy->trigger();
+        p->buffs.icy_talons->trigger();
         p->replenish_rune( rune_gen, p->gains.breath_of_sindragosa );
         return;
       }
@@ -5428,7 +5432,7 @@ struct apocalyptic_conquest_buff_t final : public death_knight_buff_t
   {
     set_default_value( p->pet_spell.apocalyptic_conquest->effectN( 1 ).percent() );
     add_invalidate( CACHE_STRENGTH );
-    // set_pct_buff_type( STAT_PCT_BUFF_STRENGTH );  TODO: bugged should be A_MOD_TOTAL_STAT_PERCENTAGE (137)
+    set_pct_buff_type( STAT_PCT_BUFF_STRENGTH );
   }
 
   // Override the value of the buff to properly capture Apocalyptic Conquest's strength buff behavior
@@ -13810,8 +13814,8 @@ void death_knight_t::create_buffs()
   buffs.visceral_strength =
       make_fallback( talent.sanlayn.visceral_strength, this, "visceral_strength", spell.visceral_strength_buff )
           ->set_default_value_from_effect_type( A_MOD_PERCENT_STAT )
-          ->add_invalidate( CACHE_STRENGTH);
-          // ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH );  // TODO bugged should be A_MOD_TOTAL_STAT_PERCENTAGE (137)
+          ->add_invalidate( CACHE_STRENGTH )
+          ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH );  // TODO bugged should be A_MOD_TOTAL_STAT_PERCENTAGE (137)
 
   buffs.bloodsoaked_ground = make_fallback( talent.sanlayn.bloodsoaked_ground.ok(), this, "bloodsoaked_ground",
                                             spell.bloodsoaked_ground_buff );
@@ -13857,13 +13861,13 @@ void death_knight_t::create_buffs()
     buffs.bloodied_blade_stacks = make_buff( this, "bloodied_blade_stacks", spell.bloodied_blade_stacks_buff )
                                       ->set_default_value( spell.bloodied_blade_stacks_buff->effectN( 1 ).percent() / 10 )
                                       ->add_invalidate( CACHE_STRENGTH )
-                                      ->set_cooldown( spell.bloodied_blade_stacks_buff->internal_cooldown() );
-                                      // ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH ); // TODO bugged should be A_MOD_TOTAL_STAT_PERCENTAGE (137)
+                                      ->set_cooldown( spell.bloodied_blade_stacks_buff->internal_cooldown() )
+                                      ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH );
 
     buffs.bloodied_blade_final  = make_buff( this, "bloodied_blade_final", spell.bloodied_blade_final_buff )
-                                      ->set_default_value_from_effect_type( A_MOD_PERCENT_STAT )  // TODO bugged should be A_MOD_TOTAL_STAT_PERCENTAGE (137)
-                                      ->add_invalidate( CACHE_STRENGTH );
-                                      // ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH );
+                                      ->set_default_value_from_effect_type( A_MOD_PERCENT_STAT )
+                                      ->add_invalidate( CACHE_STRENGTH )
+                                      ->set_pct_buff_type( STAT_PCT_BUFF_STRENGTH );
 
 
     buffs.ossuary = make_buff( this, "ossuary", spell.ossuary_buff )->set_default_value_from_effect( 1, 0.1 );
@@ -13959,7 +13963,8 @@ void death_knight_t::create_buffs()
     buffs.unbreakable_tww1_2pc = make_buff( this, "unbreakable", spell.unbreakable_tww1_2pc );
     buffs.unbroken_tww1_2pc    = make_buff( this, "unbroken", spell.unbroken_tww1_2pc )
                                     ->set_chance( 0.15 );  // TODO Verify this number.  Was found through manual testing, not in spelldata
-    buffs.piledriver_tww1_4pc  = make_buff( this, "piledriver", spell.piledriver_tww1_4pc );
+    buffs.piledriver_tww1_4pc  = make_buff( this, "piledriver", spell.piledriver_tww1_4pc )
+                                    ->set_constant_behavior( buff_constant_behavior::NEVER_CONSTANT );
   }
 
   // Frost
@@ -14555,22 +14560,10 @@ double death_knight_t::composite_attribute( attribute_e attr ) const
     switch ( specialization() )
     {
       case DEATH_KNIGHT_BLOOD:
-        if ( buffs.bloodied_blade_stacks->check() )
-          a += base.stats.attribute[ attr ] * buffs.bloodied_blade_stacks->check_stack_value();
-        if ( buffs.bloodied_blade_final->check() )
-          a += base.stats.attribute[ attr ] * buffs.bloodied_blade_final->check_value();
-        if ( buffs.visceral_strength->check() )
-          a += base.stats.attribute[ attr ] * buffs.visceral_strength->check_value();
         break;
       case DEATH_KNIGHT_UNHOLY:
-        if ( buffs.visceral_strength->check() )
-          a += base.stats.attribute[ attr ] * buffs.visceral_strength->check_value();
-        if ( buffs.apocalyptic_conquest->check() )
-          a += base.stats.attribute[ attr ] * buffs.apocalyptic_conquest->check_value();
         break;
       case DEATH_KNIGHT_FROST:
-        if ( buffs.apocalyptic_conquest->check() )
-          a += base.stats.attribute[ attr ] * buffs.apocalyptic_conquest->check_value();
         break;
       default:
         break;
@@ -14885,7 +14878,7 @@ void death_knight_t::parse_player_effects()
     // Tier Sets
     parse_effects( buffs.unbreakable_tww1_2pc, [ this ] { return buffs.bone_shield->check(); } );
     parse_effects( buffs.unbroken_tww1_2pc );
-    parse_effects( buffs.piledriver_tww1_4pc );
+    parse_effects( buffs.piledriver_tww1_4pc, buffs.piledriver_tww1_4pc->data().effectN( 1 ).percent() / 10 );
   }
 
   // Frost
@@ -15152,47 +15145,33 @@ struct death_knight_module_t : public module_t
   
   void register_hotfixes() const override
   {
-    hotfix::register_effect( "Death Knight", "2024-09-6", "Unholy Commander Nerfed by 50%", 1161082,
+    hotfix::register_effect( "Death Knight", "2024-09-13", "Vampiric Strike Proc chance increased to 25%", 1123520,
                              hotfix::HOTFIX_FLAG_LIVE )
         .field( "base_value" )
         .operation( hotfix::HOTFIX_SET )
-        .modifier( 1 )
-        .verification_value( 2 );
+        .modifier( 25 )
+        .verification_value( 10 );
 
-    hotfix::register_effect( "Death Knight", "2024-09-6", "Unholy Commander Buff Nerfed by 50%", 1155631,
+    hotfix::register_effect( "Death Knight", "2024-09-13", "Frenzied Bloodthirst increased to 5%", 1123820,
                              hotfix::HOTFIX_FLAG_LIVE )
         .field( "base_value" )
         .operation( hotfix::HOTFIX_SET )
-        .modifier( 1 )
-        .verification_value( 2 );
+        .modifier( 5 )
+        .verification_value( 4 );
 
-    hotfix::register_effect( "Death Knight", "2024-09-6", "Unholy Specilization Aura Direct Damage buffed by 5%", 179690,
+    hotfix::register_effect( "Death Knight", "2024-09-13", "Visceral Strength buffed to 8%", 1123972,
                              hotfix::HOTFIX_FLAG_LIVE )
         .field( "base_value" )
         .operation( hotfix::HOTFIX_SET )
-        .modifier( -5 )
-        .verification_value( -10 );
+        .modifier( 8 )
+        .verification_value( 6 );
 
-    hotfix::register_effect( "Death Knight", "2024-09-6", "Unholy Specilization Periodic Aura buffed by 5%", 191170,
+    hotfix::register_effect( "Death Knight", "2024-09-13", "Vampiric Strike byuffed by 20%", 1124444,
                              hotfix::HOTFIX_FLAG_LIVE )
-        .field( "base_value" )
+        .field( "ap_coefficient" )
         .operation( hotfix::HOTFIX_SET )
-        .modifier( -5 )
-        .verification_value( -10 );
-
-    hotfix::register_effect( "Death Knight", "2024-09-6", "Unholy Specilization Pet Aura buffed by 5%", 191171,
-                             hotfix::HOTFIX_FLAG_LIVE )
-        .field( "base_value" )
-        .operation( hotfix::HOTFIX_SET )
-        .modifier( -5 )
-        .verification_value( -10 );
-
-    hotfix::register_effect( "Death Knight", "2024-09-6", "Unholy Specilization Guardian Aura buffed by 5%", 1032341,
-                             hotfix::HOTFIX_FLAG_LIVE )
-        .field( "base_value" )
-        .operation( hotfix::HOTFIX_SET )
-        .modifier( -5 )
-        .verification_value( -10 );
+        .modifier( 0.5814504 )
+        .verification_value( 0.484542 );
   }
 
   void init( player_t* ) const override
