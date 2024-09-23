@@ -4224,25 +4224,17 @@ struct priest_module_t final : public module_t
   }
   void register_hotfixes() const override
   {
-    hotfix::register_effect( "Priest", "2024-09-13", "Direct damage increased by 6%", 179717, hotfix::HOTFIX_FLAG_LIVE )
+    hotfix::register_effect( "Priest", "2024-09-20", "Direct damage increased by 4%", 179717, hotfix::HOTFIX_FLAG_LIVE )
         .field( "base_value" )
         .operation( hotfix::HOTFIX_SET )
-        .modifier( 6 )
-        .verification_value( 0 );
-
-    hotfix::register_effect( "Priest", "2024-09-13", "Periodic damage increased by 6%", 191068,
+        .modifier( 10 )
+        .verification_value( 6 );
+    hotfix::register_effect( "Priest", "2024-09-20", "Periodic damage increased by 4%", 191068,
                              hotfix::HOTFIX_FLAG_LIVE )
         .field( "base_value" )
         .operation( hotfix::HOTFIX_SET )
-        .modifier( 6 )
-        .verification_value( 0 );
-
-    hotfix::register_effect( "Priest", "2024-09-13", "Psychic Link coeff reduced to 25%", 293563,
-                             hotfix::HOTFIX_FLAG_LIVE )
-        .field( "base_value" )
-        .operation( hotfix::HOTFIX_SET )
-        .modifier( 25 )
-        .verification_value( 30 );
+        .modifier( 10 )
+        .verification_value( 6 );
   }
   void combat_begin( sim_t* ) const override
   {
